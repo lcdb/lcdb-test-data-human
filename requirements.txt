@@ -1,0 +1,10 @@
+bedtools
+ucsc-gtftogenepred
+hisat2
+bowtie2
+samtools
+biopython
+gffutils
+sra-tools
+snakemake<5.25
+seqtk

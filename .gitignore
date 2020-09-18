@@ -1,0 +1,12 @@
+*egg-info
+.snakemake
+__pycache__
+data/*
+*pyc
+/lcdb_test_data/Snakefile.log
+*.fastq
+env
+*full*
+*.log
+*.lst
+*.bam
