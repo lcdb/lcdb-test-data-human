@@ -80,7 +80,8 @@ rule all:
         expand(
             'rnaseq_samples/{sample}/{sample}.{prefix}.{paired}.bam',
             sample=rnaseq_accessions.keys(), paired=['single'], prefix=['full']
-        ) + [
+        ) + 
+        [
             'annotation/hg38.small.refflat',
             'seq/hg38.small.fa',
             'seq/hg38.small.transcriptome.fa',
@@ -88,6 +89,7 @@ rule all:
         ]
         + expand('rnaseq_samples/{sample}/{sample}.{size}_R{N}.fastq.gz', sample=rnaseq_accessions.keys(), N=[1], size=['small', 'tiny'])
         + expand('rnaseq_samples/{sample}/{sample}.{size}.{r}.sorted.bam', size=['small', 'tiny'], sample=rnaseq_accessions.keys(), r=['single'])
+        + expand('rnaseq_samples/{sample}/{sample}.featurecounts.txt', sample=rnaseq_accessions.keys())
         + expand('chipseq_samples/{sample}/{sample}.{size}_R1.fastq.gz', size=['small', 'tiny'], sample=chipseq_accessions.keys())
         + expand('chipseq_samples/{sample}/{sample}.{size}.single.sorted.bam', size=['small', 'tiny'], sample=chipseq_accessions.keys())
 
@@ -450,9 +452,196 @@ rule gzipped_fastq:
 
 rule gzipped_gtf:
     input:
-        rules.prep_small_gtf.input.gtf
+        rules.prep_small_gtf.output
     output: 'annotation/hg38.small.gtf.gz'
     shell:
         'gzip {input}'
+
+
+# ----------------------------------------------------------------------------
+# Featurecounts and salmon counts
+# Needs cutadapt as prerequisite for calculating counts
+# Then needs to realign the cutadapt.fastqs with HISAT2
+
+rule cutadapt:
+    """
+    Run cutadapt
+    """
+    input:
+        fastq='rnaseq_samples/{sample}/{sample}.{size}_R{N}.fastq'
+    output:
+        fastq='rnaseq_samples/{sample}/{sample}.{size}_R{N}.cutadapt.fastq'
+    threads: 6
+    run:
+
+        # NOTE: Change cutadapt params here
+        #if c.is_paired:
+        #    shell(
+        #        "cutadapt "
+        #        "-o {output[0]} "
+        #        "-p {output[1]} "
+        #        "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA "
+        #        "-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT "
+        #        '-q 20 '
+        #        '-j {threads} '
+        #        '--minimum-length 25 '
+        #        "{input.fastq[0]} "
+        #        "{input.fastq[1]}"
+        #    )
+        #else:
+            shell(
+                "cutadapt "
+                "-o {output[0]} "
+                "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA "
+                '-q 20 '
+                '--minimum-length 25 '
+                "{input.fastq}"
+            )
+
+# created another hisat rule specific to cutadapt fastqs
+
+rule hisat_index2:
+    input: rules.prep_small_fasta.output
+    output: expand('seq/hg38.small.{n}.ht2', n=range(1,8))
+    params: index='seq/hg38.small'
+    log: 'seq/hg38.indexed-small.ht2.log'
+    shell:
+        'hisat2-build {input} {params.index} &> {log}'
+
+rule hisat_align2:
+    input:
+        index=expand('seq/hg38.small.{n}.ht2', n=range(1,8)),
+        fastq_R1='rnaseq_samples/{sample}/{sample}.{size}_R1.cutadapt.fastq.gz',
+    output:
+        single=temporary('rnaseq_samples/{sample}/{sample}.{size}.single.cutadapt.sam'),
+    params: index='seq/hg38.small'
+    threads: 8
+    run:
+        shell(
+            'hisat2 '
+            '-x {params.index} '
+            '-U {input.fastq_R1} '
+            '-p {threads} '
+            '-S {output.single}'
+        )
+
+# ------------------------------------------------------------------------------
+# HISAT2 outputs SAM but most tools use BAM
+rule rnaseq_bam2:
+    input:
+        single=rules.hisat_align2.output.single
+    output:
+        single=temporary('rnaseq_samples/{sample}/{sample}.{size}.single.cutadapt.bam')
+    run:
+        shell('samtools view -Sb {input.single} > {output.single}')
+
+rule rnaseq_sortbam2:
+    input:
+        single=rules.rnaseq_bam2.output.single,
+    output:
+        single='rnaseq_samples/{sample}/{sample}.{size}.single.cutadapt.sorted.bam'
+    shell:
+        'samtools sort {input.single} > {output.single} '
+
+
+#rule salmon_index:
+#    "Build salmon index"
+#    output:
+#        protected('seq/hg38.small/versionInfo.json')
+#    input:
+#        fasta=rules.prep_small_fasta.output
+#    params:
+#        outdir='seq/hg38.small'
+#    shell:
+#        'salmon index '
+#        '--transcripts {input.fasta} '
+#        '--index {params.outdir} '
+
+#rule salmon:
+#    """
+#    Quantify reads coming from transcripts with Salmon
+#    """
+#    input:
+#        fastq='rnaseq_samples/{sample}/{sample}.{size}_R1.cutadapt.fastq.gz',
+#        index='seq/hg38.small',
+#    output:
+#        c.patterns['salmon']
+#    params:
+#        index_dir='seq/hg38.small',
+#        outdir='seq/hg38.small'
+#    threads: 6
+#    run:
+#        if c.is_paired:
+#            shell(
+#                # NOTE: adjust Salmon params as needed
+#                'salmon quant '
+#                '--index {params.index_dir} '
+#                '--output {params.outdir} '
+#                '--threads {threads} '
+#
+#                # NOTE: --libType=A auto-detects library type. Change if needed.
+#                '--libType=A '
+#
+#                # NOTE: Docs suggest using --gcBias, --validateMappings, and
+#                # --seqBias is a good idea
+#                '--gcBias '
+#                '--seqBias '
+#                '--validateMappings '
+#                '-1 {input.fastq[0]} '
+#                '-2 {input.fastq[1]}'
+#            )
+#        else:
+#            shell(
+#                # NOTE: adjust Salmon params as needed
+#                'salmon quant '
+#                '--index {params.index_dir} '
+#                '--output {params.outdir} '
+#                '--threads {threads} '
+#
+#                # NOTE: --libType=A auto-detects library type. Change if needed.
+#                '--libType=A '
+#
+#                # NOTE: Docs suggest using --gcBias, --validateMappings, and
+#                # --seqBias is a good idea
+#                '--gcBias '
+#                '--seqBias '
+#                '--validateMappings '
+#                '-r {input.fastq} '
+#                '&> {log}'
+#            )
+
+
+
+rule featurecounts:
+    """
+    Count reads in annotations with featureCounts from the subread package
+    """
+    input:
+        annotation='annotation/hg38.small.gtf.gz',
+        bam='rnaseq_samples/{sample}/{sample}.small.single.cutadapt.sorted.bam'
+
+    output:
+        counts='rnaseq_samples/{sample}/{sample}.featurecounts.txt'
+    threads: 4
+    run:
+        # NOTE: By default, we use -p for paired-end
+        p_arg = ''
+        #if c.is_paired:
+        #    p_arg = '-p '
+        shell(
+            'featureCounts '
+
+            # NOTE:
+            # Choose strandedness here (s0 is unstranded, s1 is sense, s2 is
+            # antisense)
+            '-s2 '
+            '{p_arg} '
+            '-T {threads} '
+            '-a {input.annotation} '
+            '-o {output.counts} '
+            '{input.bam}'
+        )
+
+
 
 # vim: ft=python

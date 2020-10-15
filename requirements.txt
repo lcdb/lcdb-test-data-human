@@ -5,6 +5,10 @@ bowtie2
 samtools
 biopython
 gffutils
+salmon>=1.2.1
 sra-tools
 snakemake<5.25
 seqtk
+subread>=2.0.0
+cutadapt
+
