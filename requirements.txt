@@ -4,6 +4,7 @@ hisat2
 bowtie2
 samtools
 biopython
+gffread
 gffutils
 salmon>=1.2.1
 sra-tools

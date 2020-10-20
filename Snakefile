@@ -48,7 +48,7 @@ rnaseq_accessions = {
     'K562_JQ1_1h_2' : 'SRR6354146',
     'K562_JQ1_6h_1' : 'SRR6354147',
     'K562_JQ1_6h_2' : 'SRR6354148',
-    }
+}
 
 chipseq_accessions = {
     'BRD4_dBET6_1' : 'SRR6202977',
@@ -90,6 +90,7 @@ rule all:
         + expand('rnaseq_samples/{sample}/{sample}.{size}_R{N}.fastq.gz', sample=rnaseq_accessions.keys(), N=[1], size=['small', 'tiny'])
         + expand('rnaseq_samples/{sample}/{sample}.{size}.{r}.sorted.bam', size=['small', 'tiny'], sample=rnaseq_accessions.keys(), r=['single'])
         + expand('rnaseq_samples/{sample}/{sample}.featurecounts.txt', sample=rnaseq_accessions.keys())
+        + expand('rnaseq_samples/{sample}/{sample}.{size}.salmon/quant.sf', sample=rnaseq_accessions.keys(), size=['small'])
         + expand('chipseq_samples/{sample}/{sample}.{size}_R1.fastq.gz', size=['small', 'tiny'], sample=chipseq_accessions.keys())
         + expand('chipseq_samples/{sample}/{sample}.{size}.single.sorted.bam', size=['small', 'tiny'], sample=chipseq_accessions.keys())
 
@@ -543,34 +544,43 @@ rule rnaseq_sortbam2:
     shell:
         'samtools sort {input.single} > {output.single} '
 
+rule transcriptome_fasta:
+    input:
+        fasta=rules.prep_small_fasta.output,
+        gtf=rules.prep_small_gtf.output
+    output:
+        'seq/hg38.transcriptome.fasta'
+    shell:
+        'gffread {input.gtf} -w {output} -g {input.fasta}'
 
-#rule salmon_index:
-#    "Build salmon index"
-#    output:
-#        protected('seq/hg38.small/versionInfo.json')
-#    input:
-#        fasta=rules.prep_small_fasta.output
-#    params:
-#        outdir='seq/hg38.small'
-#    shell:
-#        'salmon index '
-#        '--transcripts {input.fasta} '
-#        '--index {params.outdir} '
 
-#rule salmon:
-#    """
-#    Quantify reads coming from transcripts with Salmon
-#    """
-#    input:
-#        fastq='rnaseq_samples/{sample}/{sample}.{size}_R1.cutadapt.fastq.gz',
-#        index='seq/hg38.small',
-#    output:
-#        c.patterns['salmon']
-#    params:
-#        index_dir='seq/hg38.small',
-#        outdir='seq/hg38.small'
-#    threads: 6
-#    run:
+rule salmon_index:
+    "Build salmon index"
+    output:
+        'seq/hg38.small/versionInfo.json'
+    input:
+        fasta=rules.transcriptome_fasta.output
+    params:
+        outdir='seq/hg38.small'
+    shell:
+        'salmon index '
+        '--transcripts {input.fasta} '
+        '--index {params.outdir} '
+
+rule salmon:
+    """
+    Quantify reads coming from transcripts with Salmon
+    """
+    input:
+        fastq='rnaseq_samples/{sample}/{sample}.{size}_R1.cutadapt.fastq.gz',
+        index='seq/hg38.small/versionInfo.json',
+    output:
+        'rnaseq_samples/{sample}/{sample}.{size}.salmon/quant.sf'
+    params:
+        index_dir='seq/hg38.small',
+        outdir='rnaseq_samples/{sample}/{sample}.{size}.salmon'
+    threads: 6
+    run:
 #        if c.is_paired:
 #            shell(
 #                # NOTE: adjust Salmon params as needed
@@ -591,24 +601,23 @@ rule rnaseq_sortbam2:
 #                '-2 {input.fastq[1]}'
 #            )
 #        else:
-#            shell(
-#                # NOTE: adjust Salmon params as needed
-#                'salmon quant '
-#                '--index {params.index_dir} '
-#                '--output {params.outdir} '
-#                '--threads {threads} '
-#
-#                # NOTE: --libType=A auto-detects library type. Change if needed.
-#                '--libType=A '
-#
-#                # NOTE: Docs suggest using --gcBias, --validateMappings, and
-#                # --seqBias is a good idea
-#                '--gcBias '
-#                '--seqBias '
-#                '--validateMappings '
-#                '-r {input.fastq} '
-#                '&> {log}'
-#            )
+            shell(
+                # NOTE: adjust Salmon params as needed
+                'salmon quant '
+                '--index {params.index_dir} '
+                '--output {params.outdir} '
+                '--threads {threads} '
+
+                # NOTE: --libType=A auto-detects library type. Change if needed.
+                '--libType=A '
+
+                # NOTE: Docs suggest using --gcBias, --validateMappings, and
+                # --seqBias is a good idea
+                '--gcBias '
+                '--seqBias '
+                '--validateMappings '
+                '-r {input.fastq}'
+            )
 
 
 
