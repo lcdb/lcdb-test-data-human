@@ -10,3 +10,12 @@ env
 *.log
 *.lst
 *.bam
+rnaseq_samples/*/*featurecounts.txt.summary
+rnaseq_samples/*/*.cutadapt.fastq.gz
+rnaseq_samples/*/*.salmon/*.json
+rnaseq_samples/*/*.salmon/aux_info/
+rnaseq_samples/*/*.salmon/libParams/
+seq/*.small/
+seq/*.small.*.ht2
+seq/*.transcriptome.fasta
+seq/*.fai
