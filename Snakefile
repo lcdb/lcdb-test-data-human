@@ -90,9 +90,11 @@ rule all:
         + expand('rnaseq_samples/{sample}/{sample}.{size}_R{N}.fastq.gz', sample=rnaseq_accessions.keys(), N=[1], size=['small', 'tiny'])
         + expand('rnaseq_samples/{sample}/{sample}.{size}.{r}.sorted.bam', size=['small', 'tiny'], sample=rnaseq_accessions.keys(), r=['single'])
         + expand('rnaseq_samples/{sample}/{sample}.featurecounts.txt', sample=rnaseq_accessions.keys())
-        'rnaseq_samples/featurecounts.txt'
+        + ['rnaseq_samples/featurecounts.txt',]
         + expand('rnaseq_samples/{sample}/{sample}.{size}.salmon/quant.sf', sample=rnaseq_accessions.keys(), size=['small'])
+        + expand('{wf}_samples/{sample}/{sample}.{size}_R1.cutadapt.fastq', wf=['rnaseq', 'chipseq'], size=['small'], sample=chipseq_accessions.keys())
         + expand('chipseq_samples/{sample}/{sample}.{size}_R1.fastq.gz', size=['small', 'tiny'], sample=chipseq_accessions.keys())
+        + expand('chipseq_samples/{sample}/{sample}.{size}.single.sorted.bam', size=['small', 'tiny'], sample=chipseq_accessions.keys())
 
 
 # ----------------------------------------------------------------------------
