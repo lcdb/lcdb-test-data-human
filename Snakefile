@@ -92,7 +92,8 @@ rule all:
         + expand('rnaseq_samples/{sample}/{sample}.featurecounts.txt', sample=rnaseq_accessions.keys())
         + ['rnaseq_samples/featurecounts.txt',]
         + expand('rnaseq_samples/{sample}/{sample}.{size}.salmon/quant.sf', sample=rnaseq_accessions.keys(), size=['small'])
-        + expand('{wf}_samples/{sample}/{sample}.{size}_R1.cutadapt.fastq', wf=['rnaseq', 'chipseq'], size=['small'], sample=chipseq_accessions.keys())
+        + expand('{wf}_samples/{sample}/{sample}.{size}_R1.cutadapt.fastq.gz', wf=['rnaseq'], size=['small'], sample=rnaseq_accessions.keys())
+        + expand('{wf}_samples/{sample}/{sample}.{size}_R1.cutadapt.fastq.gz', wf=['chipseq'], size=['small'], sample=chipseq_accessions.keys())
         + expand('chipseq_samples/{sample}/{sample}.{size}_R1.fastq.gz', size=['small', 'tiny'], sample=chipseq_accessions.keys())
         + expand('chipseq_samples/{sample}/{sample}.{size}.single.sorted.bam', size=['small', 'tiny'], sample=chipseq_accessions.keys())
 
@@ -447,7 +448,8 @@ rule gzipped_fastq:
     input:
         '{assay}_samples/{sample}/{sample}.{size}_R{N}.fastq'
     wildcard_constraints:
-        size='small|tiny'
+        size='small|tiny',
+        N='1|2'
     output:
         '{assay}_samples/{sample}/{sample}.{size}_R{N}.fastq.gz'
     shell:
@@ -471,9 +473,9 @@ rule cutadapt:
     Run cutadapt
     """
     input:
-        fastq='{wf}_samples/{sample}/{sample}.{size}_R{N}.fastq'
+        fastq='{wf}_samples/{sample}/{sample}.{size}_R{N}.fastq.gz'
     output:
-        fastq='{wf}_samples/{sample}/{sample}.{size}_R{N}.cutadapt.fastq'
+        fastq='{wf}_samples/{sample}/{sample}.{size}_R{N}.cutadapt.fastq.gz'
     threads: 6
     run:
             shell(
