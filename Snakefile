@@ -90,9 +90,9 @@ rule all:
         + expand('rnaseq_samples/{sample}/{sample}.{size}_R{N}.fastq.gz', sample=rnaseq_accessions.keys(), N=[1], size=['small', 'tiny'])
         + expand('rnaseq_samples/{sample}/{sample}.{size}.{r}.sorted.bam', size=['small', 'tiny'], sample=rnaseq_accessions.keys(), r=['single'])
         + expand('rnaseq_samples/{sample}/{sample}.featurecounts.txt', sample=rnaseq_accessions.keys())
+        'rnaseq_samples/featurecounts.txt'
         + expand('rnaseq_samples/{sample}/{sample}.{size}.salmon/quant.sf', sample=rnaseq_accessions.keys(), size=['small'])
         + expand('chipseq_samples/{sample}/{sample}.{size}_R1.fastq.gz', size=['small', 'tiny'], sample=chipseq_accessions.keys())
-        + expand('chipseq_samples/{sample}/{sample}.{size}.single.sorted.bam', size=['small', 'tiny'], sample=chipseq_accessions.keys())
 
 
 # ----------------------------------------------------------------------------
@@ -469,27 +469,11 @@ rule cutadapt:
     Run cutadapt
     """
     input:
-        fastq='rnaseq_samples/{sample}/{sample}.{size}_R{N}.fastq'
+        fastq='{wf}_samples/{sample}/{sample}.{size}_R{N}.fastq'
     output:
-        fastq='rnaseq_samples/{sample}/{sample}.{size}_R{N}.cutadapt.fastq'
+        fastq='{wf}_samples/{sample}/{sample}.{size}_R{N}.cutadapt.fastq'
     threads: 6
     run:
-
-        # NOTE: Change cutadapt params here
-        #if c.is_paired:
-        #    shell(
-        #        "cutadapt "
-        #        "-o {output[0]} "
-        #        "-p {output[1]} "
-        #        "-a AGATCGGAAGAGCACACGTCTGAACTCCAGTCA "
-        #        "-A AGATCGGAAGAGCGTCGTGTAGGGAAAGAGTGT "
-        #        '-q 20 '
-        #        '-j {threads} '
-        #        '--minimum-length 25 '
-        #        "{input.fastq[0]} "
-        #        "{input.fastq[1]}"
-        #    )
-        #else:
             shell(
                 "cutadapt "
                 "-o {output[0]} "
@@ -581,26 +565,6 @@ rule salmon:
         outdir='rnaseq_samples/{sample}/{sample}.{size}.salmon'
     threads: 6
     run:
-#        if c.is_paired:
-#            shell(
-#                # NOTE: adjust Salmon params as needed
-#                'salmon quant '
-#                '--index {params.index_dir} '
-#                '--output {params.outdir} '
-#                '--threads {threads} '
-#
-#                # NOTE: --libType=A auto-detects library type. Change if needed.
-#                '--libType=A '
-#
-#                # NOTE: Docs suggest using --gcBias, --validateMappings, and
-#                # --seqBias is a good idea
-#                '--gcBias '
-#                '--seqBias '
-#                '--validateMappings '
-#                '-1 {input.fastq[0]} '
-#                '-2 {input.fastq[1]}'
-#            )
-#        else:
             shell(
                 # NOTE: adjust Salmon params as needed
                 'salmon quant '
@@ -631,6 +595,37 @@ rule featurecounts:
 
     output:
         counts='rnaseq_samples/{sample}/{sample}.featurecounts.txt'
+    threads: 4
+    run:
+        # NOTE: By default, we use -p for paired-end
+        p_arg = ''
+        #if c.is_paired:
+        #    p_arg = '-p '
+        shell(
+            'featureCounts '
+
+            # NOTE:
+            # Choose strandedness here (s0 is unstranded, s1 is sense, s2 is
+            # antisense)
+            '-s2 '
+            '{p_arg} '
+            '-T {threads} '
+            '-a {input.annotation} '
+            '-o {output.counts} '
+            '{input.bam}'
+        )
+
+rule featurecounts_agg:
+    """
+    Count reads in annotations with featureCounts from the subread package
+    """
+    input:
+        annotation='annotation/hg38.small.gtf.gz',
+        #bam=[expand('rnaseq_samples/{sample}/{sample}.small.single.cutadapt.sorted.bam', sample=rnaseq_accessions.keys())]
+        bam=['rnaseq_samples/{sample}/{sample}.small.single.cutadapt.sorted.bam'.format(sample=sample) for sample in rnaseq_accessions.keys()]
+
+    output:
+        counts='rnaseq_samples/featurecounts.txt'
     threads: 4
     run:
         # NOTE: By default, we use -p for paired-end
